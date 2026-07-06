@@ -1,0 +1,56 @@
+name: OECT RunFiles Scaffold Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to create or update
+        required: true
+        default: oect-runfiles-scaffold-20260706
+
+permissions:
+  contents: write
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate scripts
+        run: |
+          chmod +x oect/*.sh
+          sh -n oect/install.sh
+          sh -n oect/security-scan.sh
+          sh -n oect/production-manifest.sh
+          sh -n oect/download-store-ipks.sh
+
+      - name: Build scaffold artifacts
+        run: |
+          set -eu
+          rm -rf dist
+          mkdir -p dist/scaffold dist/scan-payload
+          cp -a oect/README.md dist/SAFETY.md
+          cp -a oect/whitelist.txt oect/install.sh oect/security-denylist.txt dist/scaffold/
+          cp -a oect/whitelist.txt oect/install.sh dist/scan-payload/
+          ./oect/production-manifest.sh "${{ inputs.release_tag }}" scaffold > dist/manifest.json
+          ./oect/security-scan.sh dist/scan-payload oect/security-denylist.txt
+          tar -C dist/scaffold -czf dist/oect-runfiles-scaffold.tar.gz .
+          (cd dist && sha256sum manifest.json SAFETY.md oect-runfiles-scaffold.tar.gz > SHA256SUMS)
+
+      - name: Publish scaffold release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: OECT RunFiles scaffold ${{ inputs.release_tag }}
+          body_path: dist/SAFETY.md
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/manifest.json
+            dist/SHA256SUMS
+            dist/SAFETY.md
+            dist/oect-runfiles-scaffold.tar.gz
