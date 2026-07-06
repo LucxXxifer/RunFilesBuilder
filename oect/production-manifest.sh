@@ -4,8 +4,9 @@ set -eu
 release_tag="${1:-manual}"
 artifact_class="${2:-scaffold}"
 generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-source_commit="$(git rev-parse HEAD)"
-upstream_commit="$(git rev-parse upstream/master 2>/dev/null || true)"
+source_commit="$(git rev-parse --verify HEAD^{commit})"
+upstream_commit="$(git ls-remote https://github.com/wukongdaily/RunFilesBuilder.git refs/heads/master | awk '{print $1}')"
+[ -n "$upstream_commit" ] || upstream_commit="unknown"
 
 whitelist_json="$(awk 'NF && $1 !~ /^#/ { printf "%s\"%s\"", sep, $1; sep=", " }' oect/whitelist.txt)"
 
