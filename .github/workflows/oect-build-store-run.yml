@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to create or update
+        description: New immutable release tag to create, or an existing tag that already points to this commit
         required: true
-        default: oect-store-run-20260706
+        default: oect-store-run-20260707-r1
       store_base_url:
         description: iStore package repository base URL
         required: true
@@ -14,6 +14,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  STORE_BASE_URL: ${{ inputs.store_base_url }}
 
 jobs:
   build-store-run:
@@ -32,7 +36,7 @@ jobs:
       - name: Download whitelisted ipks
         run: |
           chmod +x oect/*.sh
-          ./oect/download-store-ipks.sh "${{ inputs.store_base_url }}" build/store build/source-manifest.tsv
+          ./oect/download-store-ipks.sh "$STORE_BASE_URL" build/store build/source-manifest.tsv
           cp oect/install.sh build/store/install.sh
           chmod +x build/store/install.sh
 
@@ -51,15 +55,24 @@ jobs:
           fi
           makeself build/store "dist/oect-luci-app-store-${version}_all.run" "OECT iStore installer ${version}" ./install.sh
           cp build/source-manifest.tsv dist/source-manifest.tsv
-          ./oect/production-manifest.sh "${{ inputs.release_tag }}" store-run > dist/manifest.json
           cp oect/README.md dist/SAFETY.md
+
+      - name: Ensure immutable release tag
+        run: |
+          chmod +x oect/ensure-release-tag.sh
+          ./oect/ensure-release-tag.sh "$RELEASE_TAG"
+
+      - name: Create release metadata
+        run: |
+          set -eu
+          ./oect/production-manifest.sh "$RELEASE_TAG" store-run > dist/manifest.json
           (cd dist && sha256sum * > SHA256SUMS)
 
       - name: Publish Store run release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag }}
-          name: OECT Store run ${{ inputs.release_tag }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OECT Store run ${{ env.RELEASE_TAG }}
           body_path: dist/SAFETY.md
           prerelease: true
           make_latest: false

@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to create or update
+        description: New immutable release tag to create, or an existing tag that already points to this commit
         required: true
-        default: oect-runfiles-scaffold-20260706
+        default: oect-runfiles-scaffold-20260707-r1
+  push:
+    tags:
+      - oect-runfiles-scaffold-*
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   scaffold:
@@ -28,7 +34,7 @@ jobs:
           sh -n oect/production-manifest.sh
           sh -n oect/download-store-ipks.sh
 
-      - name: Build scaffold artifacts
+      - name: Prepare scaffold artifacts
         run: |
           set -eu
           rm -rf dist
@@ -36,16 +42,25 @@ jobs:
           cp -a oect/README.md dist/SAFETY.md
           cp -a oect/whitelist.txt oect/install.sh oect/security-denylist.txt dist/scaffold/
           cp -a oect/whitelist.txt oect/install.sh dist/scan-payload/
-          ./oect/production-manifest.sh "${{ inputs.release_tag }}" scaffold > dist/manifest.json
           ./oect/security-scan.sh dist/scan-payload oect/security-denylist.txt
           tar -C dist/scaffold -czf dist/oect-runfiles-scaffold.tar.gz .
+
+      - name: Ensure immutable release tag
+        run: |
+          chmod +x oect/ensure-release-tag.sh
+          ./oect/ensure-release-tag.sh "$RELEASE_TAG"
+
+      - name: Create release metadata
+        run: |
+          set -eu
+          ./oect/production-manifest.sh "$RELEASE_TAG" scaffold > dist/manifest.json
           (cd dist && sha256sum manifest.json SAFETY.md oect-runfiles-scaffold.tar.gz > SHA256SUMS)
 
       - name: Publish scaffold release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.release_tag }}
-          name: OECT RunFiles scaffold ${{ inputs.release_tag }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: OECT RunFiles scaffold ${{ env.RELEASE_TAG }}
           body_path: dist/SAFETY.md
           prerelease: true
           make_latest: false
